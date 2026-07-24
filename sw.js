@@ -1,8 +1,7 @@
-const CACHE_NAME = 'focus-timer-cache-v5';
+const CACHE_NAME = 'focus-timer-cache-v6';
 const urlsToCache = [
   './index.html',
-  './manifest.json',
-  './bangla.ttf'
+  './manifest.json'
 ];
 
 // Install Service Worker

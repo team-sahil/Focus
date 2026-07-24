@@ -1102,38 +1102,91 @@ function getExportSessions(){
 
 
 
+const b2eSubject = {
+  'বাংলা': 'Bengali', 'ইংরেজি': 'English', 'অংক': 'Math', 
+  'জীবন বিজ্ঞান': 'Life Science', 'ভৌত বিজ্ঞান': 'Physical Science', 
+  'ইতিহাস': 'History', 'ভূগোল': 'Geography'
+};
+const b2eWorkType = {
+  'রিভিশন': 'Revision', 'নতুন পড়া': 'New Topic', 'মুখস্থ করা': 'Memorize', 
+  'রিডিং পড়া': 'Reading', 'প্রশ্ন উত্তর প্র্যাকটিস': 'Practice', 
+  'নোট তৈরি': 'Notes', 'অন্যান্য': 'Other'
+};
+
+function toBanglish(str) {
+  if (!str) return '';
+  const map = {
+    'অ':'o','আ':'a','ই':'i','ঈ':'i','উ':'u','ঊ':'u','ঋ':'ri','এ':'e','ঐ':'oi','ও':'o','ঔ':'ou',
+    'ক':'k','খ':'kh','গ':'g','ঘ':'gh','ঙ':'ng','চ':'ch','ছ':'ch','জ':'j','ঝ':'jh','ঞ':'n',
+    'ট':'t','ঠ':'th','ড':'d','ঢ':'dh','ণ':'n','ত':'t','থ':'th','দ':'d','ধ':'dh','ন':'n',
+    'প':'p','ফ':'f','ব':'b','ভ':'v','ম':'m','য':'j','র':'r','ল':'l','শ':'sh','ষ':'sh','স':'s','হ':'h',
+    'ড়':'r','ঢ়':'rh','য়':'y','ৎ':'t','ং':'ng','ঁ':'','ঃ':'h',
+    'া':'a','ি':'i','ী':'i','ু':'u','ূ':'u','ৃ':'ri','ে':'e','ৈ':'oi','ো':'o','ৌ':'ou','্':''
+  };
+  let res = '';
+  for(let i=0; i<str.length; i++){
+    res += map[str[i]] !== undefined ? map[str[i]] : str[i];
+  }
+  return res.replace(/a+/g, 'a').replace(/i+/g, 'i');
+}
+
+async function translateBatch(strings) {
+  if (!strings || strings.length === 0) return {};
+  const query = strings.join(' ||| ');
+  const url = `https://translate.googleapis.com/translate_a/single?client=gtx&sl=bn&tl=en&dt=t&q=${encodeURIComponent(query)}`;
+  try {
+    const res = await fetch(url);
+    const json = await res.json();
+    let translated = '';
+    json[0].forEach(part => translated += part[0]);
+    const translatedParts = translated.split('|||').map(s => s.trim());
+    const resultMap = {};
+    strings.forEach((s, i) => { resultMap[s] = translatedParts[i] || s; });
+    return resultMap;
+  } catch(e) {
+    console.error('Translation API failed:', e);
+    const fallbackMap = {};
+    strings.forEach(s => fallbackMap[s] = toBanglish(s));
+    return fallbackMap;
+  }
+}
+
 document.getElementById('exportPdfBtn').addEventListener('click', async ()=>{
   const data = getExportSessions();
   if(data.length===0){ showToast('No data to export'); return; }
   
   const btn = document.getElementById('exportPdfBtn');
-  btn.textContent = 'Preparing...';
+  btn.textContent = 'Translating...';
   btn.disabled = true;
 
   try {
-    const fontRes = await fetch('./bangla.ttf');
-    const fontBuffer = await fontRes.arrayBuffer();
+    const uniqueStrings = new Set();
+    data.forEach(s => {
+      if (s.subject && !b2eSubject[s.subject]) uniqueStrings.add(s.subject);
+      if (s.workType && !b2eWorkType[s.workType]) uniqueStrings.add(s.workType);
+    });
     
-    let binary = '';
-    const bytes = new Uint8Array(fontBuffer);
-    for (let i = 0; i < bytes.byteLength; i++) {
-      binary += String.fromCharCode(bytes[i]);
+    const translationMap = await translateBatch(Array.from(uniqueStrings));
+    
+    function getEn(str, isSubject) {
+      if(!str) return '';
+      if(isSubject && b2eSubject[str]) return b2eSubject[str];
+      if(!isSubject && b2eWorkType[str]) return b2eWorkType[str];
+      return translationMap[str] || str;
     }
-    const fontBase64 = btoa(binary);
+
+    btn.textContent = 'Preparing...';
 
     const { jsPDF } = window.jspdf;
     const doc = new jsPDF();
-    doc.addFileToVFS('bangla.ttf', fontBase64);
-    doc.addFont('bangla.ttf', 'bangla', 'normal');
-    doc.setFont('bangla');
     
     const range = document.getElementById('exportRange').value;
-    let titleStr = 'স্টাডি রিপোর্ট';
-    if(range === 'all') titleStr = 'পুরো সময়কালের স্টাডি রিপোর্ট';
-    else if(range === 'today') titleStr = 'স্টাডি রিপোর্ট (আজ)';
-    else if(range === '24h') titleStr = 'স্টাডি রিপোর্ট (শেষ ২৪ ঘন্টা)';
-    else if(range === '48h') titleStr = 'স্টাডি রিপোর্ট (শেষ ৪৮ ঘন্টা)';
-    else titleStr = `স্টাডি রিপোর্ট (গত ${range} দিন)`;
+    let titleStr = 'Study Report';
+    if(range === 'all') titleStr = 'Full Study Report';
+    else if(range === 'today') titleStr = 'Study Report (Today)';
+    else if(range === '24h') titleStr = 'Study Report (Last 24h)';
+    else if(range === '48h') titleStr = 'Study Report (Last 48h)';
+    else titleStr = `Study Report (Last ${range} Days)`;
     
     let studyMin = 0; let nonStudyMin = 0;
     data.forEach(s => {
@@ -1146,37 +1199,44 @@ document.getElementById('exportPdfBtn').addEventListener('click', async ()=>{
     const nonStudyHr = (nonStudyMin/60).toFixed(1);
 
     doc.setFontSize(18);
-    doc.text('ফোকাস স্টাডি টাইমার', 14, 22);
+    doc.text('Focus Study Timer', 14, 22);
     doc.setFontSize(12);
     doc.setTextColor(100);
     doc.text(titleStr, 14, 30);
     
     doc.setFontSize(11);
     doc.setTextColor(0);
-    doc.text(`মোট পড়ালেখা: ${studyHr} ঘণ্টা`, 14, 40);
-    doc.text(`নন-স্টাডি: ${nonStudyHr} ঘণ্টা`, 14, 46);
+    doc.text(`Total Study: ${studyHr} hrs`, 14, 40);
+    doc.text(`Non-Study: ${nonStudyHr} hrs`, 14, 46);
 
     const tableData = data.sort((a,b)=>(a.ts||0) - (b.ts||0)).map(s => {
       const isNS = s.isNonStudy || (s.id && String(s.id).startsWith('ns')) ? 'Non-Study' : 'Study';
       const timeRange = s.ts ? formatTimeRangeOnlyTime(s.ts, s.minutes) : '-';
-      return [s.date, timeRange, s.subject, (s.workType || 'N/A'), `${s.minutes} min`, isNS];
+      return [
+        s.date, 
+        timeRange, 
+        getEn(s.subject, true), 
+        getEn(s.workType || 'N/A', false), 
+        `${s.minutes} min`, 
+        isNS
+      ];
     });
 
     doc.autoTable({
       startY: 52,
-      head: [['তারিখ', 'সময়', 'বিষয়', 'কাজের ধরন', 'মিনিট', 'ক্যাটাগরি']],
+      head: [['Date', 'Time', 'Subject', 'Work Type', 'Minutes', 'Category']],
       body: tableData,
       theme: 'grid',
-      headStyles: { fillColor: [201, 150, 47], font: 'bangla' },
+      headStyles: { fillColor: [201, 150, 47] },
       alternateRowStyles: { fillColor: [250, 250, 250] },
-      styles: { font: 'bangla', fontSize: 10 },
+      styles: { fontSize: 10 },
       columnStyles: {
-        0: { cellWidth: 22 }, 
-        1: { cellWidth: 33 }, 
+        0: { cellWidth: 24 }, 
+        1: { cellWidth: 38 }, 
         2: { cellWidth: 'auto' }, 
         3: { cellWidth: 26 }, 
         4: { cellWidth: 18 }, 
-        5: { cellWidth: 22 }  
+        5: { cellWidth: 24 }  
       }
     });
 
