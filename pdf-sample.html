@@ -1,0 +1,150 @@
+<!DOCTYPE html>
+<html lang="bn">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>PDF Export Sample</title>
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Serif+Bengali:wght@400;600&family=Inter:wght@400;600&display=swap" rel="stylesheet">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
+
+  <style>
+    :root {
+      --bg: #121212;
+      --surface: #1e1e1e;
+      --accent: #e6c875;
+      --text: #f5f5f5;
+      --text-dim: #a0a0a0;
+      --line: #333;
+    }
+    body {
+      background-color: var(--bg);
+      color: var(--text);
+      font-family: 'Inter', sans-serif;
+      padding: 20px;
+    }
+    /* PDF Container - what will be printed */
+    #pdf-content {
+      background-color: var(--bg);
+      color: var(--text);
+      padding: 20px;
+      max-width: 600px;
+      margin: 0 auto;
+      font-family: 'Inter', sans-serif;
+    }
+    .header {
+      font-family: 'Noto Serif Bengali', serif;
+      font-size: 1.5rem;
+      color: var(--accent);
+      margin-bottom: 20px;
+      text-align: center;
+      border-bottom: 1px solid var(--line);
+      padding-bottom: 10px;
+    }
+    .hist-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 12px 0;
+      border-bottom: 1px solid var(--line);
+    }
+    .hist-left {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      font-family: 'Noto Serif Bengali', serif;
+      font-size: 1.1rem;
+      font-weight: 600;
+    }
+    .badge {
+      background: var(--line);
+      padding: 2px 6px;
+      border-radius: 4px;
+      font-size: 0.75rem;
+      font-family: 'Inter', sans-serif;
+      display: inline-block;
+      width: max-content;
+      color: var(--text-dim);
+      font-weight: normal;
+    }
+    .hist-meta {
+      font-family: 'Inter', sans-serif;
+      font-size: 0.85rem;
+      color: var(--text-dim);
+      font-weight: 400;
+    }
+    .hist-right {
+      font-family: 'Inter', sans-serif;
+      font-size: 1.1rem;
+      color: var(--accent);
+      font-weight: 600;
+    }
+    
+    .btn {
+      background-color: var(--accent);
+      color: var(--bg);
+      border: none;
+      padding: 10px 20px;
+      font-size: 1rem;
+      border-radius: 6px;
+      cursor: pointer;
+      font-family: 'Inter', sans-serif;
+      font-weight: 600;
+      display: block;
+      margin: 30px auto;
+    }
+    .btn:hover {
+      opacity: 0.9;
+    }
+  </style>
+</head>
+<body>
+
+  <button class="btn" onclick="downloadPDF()">Download PDF (html2pdf.js)</button>
+
+  <div id="pdf-content">
+    <div class="header">ফোকাস স্টাডি রিপোর্ট (Focus Study Report)</div>
+    
+    <div class="hist-row">
+      <div class="hist-left">
+        <span>বাংলা <span class="badge">Study</span></span>
+        <span class="hist-meta">[রিভিশন] &nbsp; 8:46 AM - 10:05 AM, 24-07-2026</span>
+      </div>
+      <div class="hist-right">79 min</div>
+    </div>
+
+    <div class="hist-row">
+      <div class="hist-left">
+        <span>Keep trying. One day, you will definitely be able to wake up on time every day.</span>
+        <span class="badge">Non-Study</span>
+        <span class="hist-meta">[Try again, don't give up] &nbsp; 8:40 AM - 8:41 AM, 24-07-2026</span>
+      </div>
+      <div class="hist-right">1 min</div>
+    </div>
+
+    <div class="hist-row">
+      <div class="hist-left">
+        <span>SLEEP</span>
+        <span class="badge">Non-Study</span>
+        <span class="hist-meta">[Other] &nbsp; 7:37 PM - 8:09 AM, 24-07-2026</span>
+      </div>
+      <div class="hist-right">752 min</div>
+    </div>
+  </div>
+
+  <script>
+    function downloadPDF() {
+      const element = document.getElementById('pdf-content');
+      
+      const opt = {
+        margin:       0.5, // 0.5 inch margin
+        filename:     'focus-study-report.pdf',
+        image:        { type: 'jpeg', quality: 0.98 },
+        html2canvas:  { scale: 2, useCORS: true, backgroundColor: '#121212' }, // scale 2 for better quality
+        jsPDF:        { unit: 'in', format: 'a4', orientation: 'portrait' }
+      };
+
+      html2pdf().set(opt).from(element).save();
+    }
+  </script>
+</body>
+</html>

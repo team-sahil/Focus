@@ -3,7 +3,7 @@ import {
   getAuth, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged
 } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
 import {
-  getFirestore, collection, doc, setDoc, deleteDoc, getDocs, getDoc, addDoc, onSnapshot, query, where
+  getFirestore, collection, doc, setDoc, deleteDoc, getDocs, getDoc, addDoc, onSnapshot, query, where, writeBatch
 } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 
 const firebaseConfig = {
@@ -32,9 +32,6 @@ function localGet(key, fallback){
 }
 function localSet(key, val){
   try{
-    if (Array.isArray(val) && val.length > 100 && (key === LS_SESSIONS || key === 'st_nonstudy_sessions')) {
-      val = val.slice(-100);
-    }
     localStorage.setItem(key, JSON.stringify(val));
   }catch(e){}
 }
@@ -136,10 +133,7 @@ async function addSession(subjName, minutes, workType){
     rec.isNonStudy = true;
     if (currentUser) {
       try {
-        const ref = await addDoc(collection(db, 'users', currentUser.uid, 'nonStudySessions'), rec);
-        if (!nonStudySessions.some(s => s.id === ref.id)) {
-          nonStudySessions.push({ id: ref.id, ...rec, isNonStudy: true });
-        }
+        await addDoc(collection(db, 'users', currentUser.uid, 'nonStudySessions'), rec);
       } catch(e) {
         console.error(e);
         showToast('ইন্টারনেট কানেকশন নেই! নন-স্টাডি সেশন অফলাইনে সেভ করা হয়েছে।');
@@ -155,10 +149,7 @@ async function addSession(subjName, minutes, workType){
   } else {
     if(currentUser){
       try {
-        const ref = await addDoc(collection(db,'users',currentUser.uid,'sessions'), rec);
-        if (!sessions.some(s => s.id === ref.id)) {
-          sessions.push({ id: ref.id, ...rec });
-        }
+        await addDoc(collection(db,'users',currentUser.uid,'sessions'), rec);
       } catch(e) {
         console.error(e);
         showToast('ইন্টারনেট কানেকশন নেই! সেশন অফলাইনে সেভ করা হয়েছে।');
@@ -292,6 +283,9 @@ onAuthStateChanged(auth, async (user)=>{
       localStorage.removeItem(LS_PREFS);
     }
     await setDoc(doc(db,'users',currentUser.uid,'meta','prefs'), fbPrefs);
+  } else {
+    if (unsubSessions) { unsubSessions(); unsubSessions = null; }
+    if (unsubNonStudySessions) { unsubNonStudySessions(); unsubNonStudySessions = null; }
   }
   
   await loadAll();
@@ -777,7 +771,7 @@ async function finish(){
   } else {
     playChime(); vibrate(); notify(sname + ' পড়ার সময় শেষ হয়েছে');
     showToast('⏰ ' + sname + ' — সময় শেষ হয়েছে!');
-    await addSession(sname, Math.round(totalSeconds/60), selectedWorkType);
+    await addSession(sname, Math.floor(totalSeconds/60), selectedWorkType);
     hintEl.textContent = 'সময় শেষ! আবার শুরু করতে Start চাপো';
   }
   startBtn.disabled=false; pauseBtn.disabled=true;
@@ -860,7 +854,7 @@ async function resetTimer(){
   }
 
   if (finalElapsed > 0) {
-    const mins = Math.round(finalElapsed/60);
+    const mins = Math.floor(finalElapsed/60);
     if (pomodoroMode && pomoPhase === 'break') {
       showToast('☕ বিরতি বাতিল করা হয়েছে');
     } else if(mins>=1){
@@ -1065,7 +1059,7 @@ function renderHistory(){
   if(sorted.length===0){ list.innerHTML='<div class="empty-note">এখনও কোনো সেশন নেই</div>'; return; }
   list.innerHTML = sorted.map(s=>{
     const isNS = s.isNonStudy || (s.id && String(s.id).startsWith('ns'));
-    const badge = isNS ? `<span style="background:var(--line); padding:2px 6px; border-radius:4px; font-size:0.7rem;">Non-Study</span>` : '';
+    const badge = isNS ? `<span style="background:var(--line); padding:2px 6px; border-radius:4px; font-size:0.7rem; display:inline-block; width:max-content;">Non-Study</span>` : '';
     return `
     <div class="hist-row">
       <div class="hist-left">
@@ -1108,84 +1102,92 @@ function getExportSessions(){
 
 
 
-document.getElementById('exportPdfBtn').addEventListener('click', ()=>{
+document.getElementById('exportPdfBtn').addEventListener('click', async ()=>{
   const data = getExportSessions();
   if(data.length===0){ showToast('No data to export'); return; }
   
-  const { jsPDF } = window.jspdf;
-  const doc = new jsPDF();
-  
-  const range = document.getElementById('exportRange').value;
-  let titleStr = 'Study Report';
-  if(range === 'all') titleStr = 'All Time Study Report';
-  else if(range === 'today') titleStr = 'Study Report (Today)';
-  else if(range === '24h') titleStr = 'Study Report (Last 24 Hours)';
-  else if(range === '48h') titleStr = 'Study Report (Last 48 Hours)';
-  else titleStr = `Study Report (Last ${range} Days)`;
-  
-  let studyMin = 0; let nonStudyMin = 0;
-  data.forEach(s => {
-    const isNS = s.isNonStudy || (s.id && String(s.id).startsWith('ns'));
-    if(isNS) nonStudyMin += s.minutes;
-    else studyMin += s.minutes;
-  });
-  
-  const studyHr = (studyMin/60).toFixed(1);
-  const nonStudyHr = (nonStudyMin/60).toFixed(1);
+  const btn = document.getElementById('exportPdfBtn');
+  btn.textContent = 'Preparing...';
+  btn.disabled = true;
 
-  doc.setFontSize(18);
-  doc.text('Focus Study Timer', 14, 22);
-  doc.setFontSize(12);
-  doc.setTextColor(100);
-  doc.text(titleStr, 14, 30);
-  
-  doc.setFontSize(11);
-  doc.setTextColor(0);
-  doc.text(`Total Study Time: ${studyHr} hours`, 14, 40);
-  doc.text(`Total Non-Study Time: ${nonStudyHr} hours`, 14, 46);
-
-  const b2eSubject = {
-    'বাংলা': 'Bengali', 'ইংরেজি': 'English', 'অংক': 'Math', 
-    'জীবন বিজ্ঞান': 'Life Science', 'ভৌত বিজ্ঞান': 'Physical Science', 
-    'ইতিহাস': 'History', 'ভূগোল': 'Geography'
-  };
-  const b2eWorkType = {
-    'রিভিশন': 'Revision', 'নতুন পড়া': 'New Topic', 'মুখস্থ করা': 'Memorize', 
-    'রিডিং পড়া': 'Reading', 'প্রশ্ন উত্তর প্র্যাকটিস': 'Practice', 
-    'নোট তৈরি': 'Notes', 'অন্যান্য': 'Other'
-  };
-
-  const tableData = data.sort((a,b)=>(a.ts||0) - (b.ts||0)).map(s => {
-    const isNS = s.isNonStudy || (s.id && String(s.id).startsWith('ns')) ? 'Non-Study' : 'Study';
-    let subj = s.subject;
-    if (b2eSubject[subj]) subj = b2eSubject[subj];
-    let wt = s.workType || 'Other';
-    if (b2eWorkType[wt]) wt = b2eWorkType[wt];
-
-    const timeRange = s.ts ? formatTimeRangeOnlyTime(s.ts, s.minutes) : '-';
-
-    return [s.date, timeRange, subj, wt, `${s.minutes} min`, isNS];
-  });
-
-  doc.autoTable({
-    startY: 52,
-    head: [['Date', 'Time', 'Subject', 'Work Type', 'Duration', 'Category']],
-    body: tableData,
-    theme: 'grid',
-    headStyles: { fillColor: [201, 150, 47] },
-    alternateRowStyles: { fillColor: [250, 250, 250] },
-    styles: { font: 'helvetica', fontSize: 10 },
-    columnStyles: {
-      0: { cellWidth: 22 }, // Date
-      1: { cellWidth: 33 }, // Time
-      2: { cellWidth: 'auto' }, // Subject (Expands)
-      3: { cellWidth: 24 }, // Work Type
-      4: { cellWidth: 18 }, // Duration
-      5: { cellWidth: 22 }  // Category
+  try {
+    const fontRes = await fetch('./bangla.ttf');
+    const fontBuffer = await fontRes.arrayBuffer();
+    
+    let binary = '';
+    const bytes = new Uint8Array(fontBuffer);
+    for (let i = 0; i < bytes.byteLength; i++) {
+      binary += String.fromCharCode(bytes[i]);
     }
-  });
+    const fontBase64 = btoa(binary);
 
-  doc.save('focus-timer-report.pdf');
+    const { jsPDF } = window.jspdf;
+    const doc = new jsPDF();
+    doc.addFileToVFS('bangla.ttf', fontBase64);
+    doc.addFont('bangla.ttf', 'bangla', 'normal');
+    doc.setFont('bangla');
+    
+    const range = document.getElementById('exportRange').value;
+    let titleStr = 'স্টাডি রিপোর্ট';
+    if(range === 'all') titleStr = 'পুরো সময়কালের স্টাডি রিপোর্ট';
+    else if(range === 'today') titleStr = 'স্টাডি রিপোর্ট (আজ)';
+    else if(range === '24h') titleStr = 'স্টাডি রিপোর্ট (শেষ ২৪ ঘন্টা)';
+    else if(range === '48h') titleStr = 'স্টাডি রিপোর্ট (শেষ ৪৮ ঘন্টা)';
+    else titleStr = `স্টাডি রিপোর্ট (গত ${range} দিন)`;
+    
+    let studyMin = 0; let nonStudyMin = 0;
+    data.forEach(s => {
+      const isNS = s.isNonStudy || (s.id && String(s.id).startsWith('ns'));
+      if(isNS) nonStudyMin += s.minutes;
+      else studyMin += s.minutes;
+    });
+    
+    const studyHr = (studyMin/60).toFixed(1);
+    const nonStudyHr = (nonStudyMin/60).toFixed(1);
+
+    doc.setFontSize(18);
+    doc.text('ফোকাস স্টাডি টাইমার', 14, 22);
+    doc.setFontSize(12);
+    doc.setTextColor(100);
+    doc.text(titleStr, 14, 30);
+    
+    doc.setFontSize(11);
+    doc.setTextColor(0);
+    doc.text(`মোট পড়ালেখা: ${studyHr} ঘণ্টা`, 14, 40);
+    doc.text(`নন-স্টাডি: ${nonStudyHr} ঘণ্টা`, 14, 46);
+
+    const tableData = data.sort((a,b)=>(a.ts||0) - (b.ts||0)).map(s => {
+      const isNS = s.isNonStudy || (s.id && String(s.id).startsWith('ns')) ? 'Non-Study' : 'Study';
+      const timeRange = s.ts ? formatTimeRangeOnlyTime(s.ts, s.minutes) : '-';
+      return [s.date, timeRange, s.subject, (s.workType || 'N/A'), `${s.minutes} min`, isNS];
+    });
+
+    doc.autoTable({
+      startY: 52,
+      head: [['তারিখ', 'সময়', 'বিষয়', 'কাজের ধরন', 'মিনিট', 'ক্যাটাগরি']],
+      body: tableData,
+      theme: 'grid',
+      headStyles: { fillColor: [201, 150, 47], font: 'bangla' },
+      alternateRowStyles: { fillColor: [250, 250, 250] },
+      styles: { font: 'bangla', fontSize: 10 },
+      columnStyles: {
+        0: { cellWidth: 22 }, 
+        1: { cellWidth: 33 }, 
+        2: { cellWidth: 'auto' }, 
+        3: { cellWidth: 26 }, 
+        4: { cellWidth: 18 }, 
+        5: { cellWidth: 22 }  
+      }
+    });
+
+    doc.save('focus-timer-report.pdf');
+  } catch(err) {
+    console.error(err);
+    showToast('PDF Export failed');
+  } finally {
+    btn.textContent = 'PDF';
+    btn.disabled = false;
+  }
 });
 
 /* ---------- JSON Backup & Restore ---------- */
@@ -1243,7 +1245,7 @@ document.getElementById('restoreFileInput').addEventListener('change', (e)=>{
 
 /* ---------- refresh everything ---------- */
 async function refreshEverything(){
-  renderTarget(); renderLevel(); renderCompare(); renderStats(); renderStreak(); renderHeatmap(); renderHistory();
+  renderTarget(); renderLevel(); renderCompare(); renderStats(); renderStreak(); renderHeatmap(); renderHistory(); renderSubjectAnalytics();
 }
 
 /* ---------- init / resume timer across reload (local only) ---------- */
@@ -1356,8 +1358,29 @@ document.getElementById('bulkDeleteBtn').addEventListener('click', async () => {
   }
 
   if(confirm(`আপনি কি নিশ্চিত যে ${fromDate} থেকে ${toDate} তারিখের ${toDelete.length} টি সেশন মুছে ফেলতে চান? এটি আর ফেরত পাওয়া যাবে না!`)) {
-    for(const s of toDelete) {
-      await deleteSession(s.id);
+    if (currentUser) {
+      try {
+        for (let i = 0; i < toDelete.length; i += 500) {
+          const batch = writeBatch(db);
+          const chunk = toDelete.slice(i, i + 500);
+          chunk.forEach(s => {
+            const isNS = s.isNonStudy || (s.id && String(s.id).startsWith('ns'));
+            const colName = isNS ? 'nonStudySessions' : 'sessions';
+            batch.delete(doc(db, 'users', currentUser.uid, colName, s.id));
+          });
+          await batch.commit();
+        }
+        sessions = sessions.filter(s => !toDelete.some(d => d.id === s.id));
+        nonStudySessions = nonStudySessions.filter(s => !toDelete.some(d => d.id === s.id));
+      } catch(err) {
+        console.error(err);
+        showToast('ডিলিট করতে সমস্যা হয়েছে!');
+        return;
+      }
+    } else {
+      for(const s of toDelete) {
+        await deleteSession(s.id);
+      }
     }
     await refreshEverything();
     showToast(`${toDelete.length} টি সেশন সফলভাবে মুছে ফেলা হয়েছে!`);
@@ -1456,10 +1479,4 @@ function renderSubjectAnalytics() {
     `;
   }).join('');
 }
-
-// Hook analytics into refreshEverything
-const oldRefreshEverything = refreshEverything;
-refreshEverything = async function() {
-  await oldRefreshEverything();
-  renderSubjectAnalytics();
-};
+
