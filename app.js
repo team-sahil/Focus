@@ -12,8 +12,8 @@ const firebaseConfig = {
   projectId: "my-new-project-a510e",
   storageBucket: "my-new-project-a510e.firebasestorage.app",
   messagingSenderId: "589824399304",
-  appId: "1:589824399304:web:220e2a4db1ecc2f56b52fd",
-  measurementId: "G-VLBE4XK3K8"
+  appId: "1:589824399304:web:9e93181ccc258c316b52fd",
+  measurementId: "G-88XV4T1K3B"
 };
 const fbApp = initializeApp(firebaseConfig);
 const auth = getAuth(fbApp);
@@ -74,16 +74,16 @@ async function loadAll(){
     const qNS = query(collection(db,'users',currentUser.uid,'nonStudySessions'), where('ts', '>=', thirtyDaysAgo));
     if (unsubNonStudySessions) unsubNonStudySessions();
     unsubNonStudySessions = onSnapshot(qNS, (snap) => {
-      nonStudySessions = snap.docs.map(d => ({ id:d.id, ...d.data() }));
+      nonStudySessions = snap.docs.map(d => ({ id:d.id, ...d.data(), isNonStudy: true }));
       refreshEverything();
     });
 
     const prefSnap = await getDoc(doc(db,'users',currentUser.uid,'meta','prefs'));
-    prefs = prefSnap.exists() ? prefSnap.data() : { dailyTarget:120, subjects: [], workTypes: [] };
+    prefs = prefSnap.exists() ? prefSnap.data() : { dailyTarget:120, subjects: [...DEFAULT_SUBJECTS], workTypes: [...DEFAULT_WORK_TYPES] };
   } else {
     sessions = localGet(LS_SESSIONS, []);
-    nonStudySessions = localGet('st_nonstudy_sessions', []);
-    prefs = localGet(LS_PREFS, { dailyTarget:120, subjects: [], workTypes: [] });
+    nonStudySessions = localGet('st_nonstudy_sessions', []).map(s => ({ ...s, isNonStudy: true }));
+    prefs = localGet(LS_PREFS, { dailyTarget:120, subjects: [...DEFAULT_SUBJECTS], workTypes: [...DEFAULT_WORK_TYPES] });
   }
 
   // Data migration for subjects & workTypes
@@ -130,13 +130,16 @@ async function addSession(subjName, minutes, workType){
   const subjObj = prefs.subjects.find(s => (s.name || s) === selectedSubject);
   const isNS = subjObj ? !!subjObj.isNonStudy : false;
 
-  const rec = { date: todayStr(), subject: subjName, workType: workType || 'Other', minutes, ts: Date.now() };
+  const rec = { date: todayStr(), subject: subjName, workType: workType || 'N/A', minutes, ts: Date.now() };
   
   if(isNS) {
+    rec.isNonStudy = true;
     if (currentUser) {
       try {
         const ref = await addDoc(collection(db, 'users', currentUser.uid, 'nonStudySessions'), rec);
-        nonStudySessions.push({ id: ref.id, ...rec });
+        if (!nonStudySessions.some(s => s.id === ref.id)) {
+          nonStudySessions.push({ id: ref.id, ...rec, isNonStudy: true });
+        }
       } catch(e) {
         console.error(e);
         showToast('ইন্টারনেট কানেকশন নেই! নন-স্টাডি সেশন অফলাইনে সেভ করা হয়েছে।');
@@ -153,7 +156,9 @@ async function addSession(subjName, minutes, workType){
     if(currentUser){
       try {
         const ref = await addDoc(collection(db,'users',currentUser.uid,'sessions'), rec);
-        sessions.push({ id: ref.id, ...rec });
+        if (!sessions.some(s => s.id === ref.id)) {
+          sessions.push({ id: ref.id, ...rec });
+        }
       } catch(e) {
         console.error(e);
         showToast('ইন্টারনেট কানেকশন নেই! সেশন অফলাইনে সেভ করা হয়েছে।');
@@ -169,7 +174,8 @@ async function addSession(subjName, minutes, workType){
   }
 }
 async function deleteSession(id){
-  if(id && id.startsWith('ns')) {
+  const isNS = nonStudySessions.some(s => s.id === id);
+  if(isNS) {
     nonStudySessions = nonStudySessions.filter(s => s.id !== id);
     if (currentUser) {
       try {
@@ -248,7 +254,7 @@ onAuthStateChanged(auth, async (user)=>{
     }
 
     const snapNS = await getDocs(collection(db,'users',currentUser.uid,'nonStudySessions'));
-    const fbNS = snapNS.docs.map(d => ({ id:d.id, ...d.data() }));
+    const fbNS = snapNS.docs.map(d => ({ id:d.id, ...d.data(), isNonStudy: true }));
     
     if (localNS.length > 0) {
       for (const s of localNS) {
@@ -290,10 +296,10 @@ onAuthStateChanged(auth, async (user)=>{
   
   await loadAll();
   
-  if(!prefs.subjects.find(s => s.name === selectedSubject)) {
+  if(selectedSubject !== '' && !prefs.subjects.find(s => s.name === selectedSubject)) {
     selectedSubject = prefs.subjects[0]?.name || '';
   }
-  if(!prefs.workTypes.includes(selectedWorkType)) {
+  if(selectedWorkType !== '' && !prefs.workTypes.includes(selectedWorkType)) {
     selectedWorkType = prefs.workTypes[0] || '';
   }
   
@@ -416,10 +422,16 @@ function showToast(msg){
 }
 
 /* ---------- subjects & work type UI ---------- */
-let selectedSubject = 'বাংলা';
+let selectedSubject = '';
 let selectedSubMenu = '';
-let selectedWorkType = 'রিভিশন';
+let selectedWorkType = '';
 let isTimerActive = false;
+let isEditMode = false;
+
+document.getElementById('editModeToggle').addEventListener('click', () => {
+  isEditMode = !isEditMode;
+  renderSelectionChips();
+});
 
 function renderSelectionChips(){
   const area1 = document.getElementById('subjSelectChips');
@@ -440,18 +452,23 @@ function renderSelectionChips(){
     let visualClass = '';
     if(isTimerActive) visualClass = isA ? 'timer-glow' : 'inactive-dim';
     return `<div class="sel-chip ${isC} ${isA} ${visualClass}" data-name="${s.name}">${s.name}</div>`;
-  }).join('');
+  }).join('') + (!isTimerActive && isEditMode ? `<div class="sel-chip add-chip" data-action="add-subject" style="border:1px dashed var(--accent); color:var(--accent); background:transparent;">＋ Subject</div>` : '');
 
   const subjObj = prefs.subjects.find(s => s.name === selectedSubject);
-  if(subjObj && subjObj.sub && subjObj.sub.length > 0) {
+  if(subjObj && ((subjObj.sub && subjObj.sub.length > 0) || !isTimerActive)) {
     area2.style.display = 'flex';
-    if(!selectedSubMenu) selectedSubMenu = subjObj.sub[0];
-    area2.innerHTML = subjObj.sub.map(sub => {
-      const isA = (sub === selectedSubMenu) ? 'active' : '';
-      let visualClass = '';
-      if(isTimerActive) visualClass = isA ? 'timer-glow' : 'inactive-dim';
-      return `<div class="sel-chip ${isA} ${visualClass}" data-sub="${sub}">↳ ${sub}</div>`;
-    }).join('');
+    if(subjObj.sub && subjObj.sub.length > 0) {
+      if(!selectedSubMenu || !subjObj.sub.includes(selectedSubMenu)) selectedSubMenu = subjObj.sub[0];
+      area2.innerHTML = subjObj.sub.map(sub => {
+        const isA = (sub === selectedSubMenu) ? 'active' : '';
+        let visualClass = '';
+        if(isTimerActive) visualClass = isA ? 'timer-glow' : 'inactive-dim';
+        return `<div class="sel-chip ${isA} ${visualClass}" data-sub="${sub}">↳ ${sub}</div>`;
+      }).join('') + (!isTimerActive && isEditMode ? `<div class="sel-chip add-chip" data-action="add-sub" style="border:1px dashed var(--accent); color:var(--accent); background:transparent;">＋ Sub-Subject</div>` : '');
+    } else {
+      selectedSubMenu = '';
+      area2.innerHTML = (!isTimerActive && isEditMode ? `<div class="sel-chip add-chip" data-action="add-sub" style="border:1px dashed var(--accent); color:var(--accent); background:transparent;">＋ Sub-Subject</div>` : '');
+    }
   } else {
     area2.style.display = 'none';
     selectedSubMenu = '';
@@ -462,7 +479,7 @@ function renderSelectionChips(){
     let visualClass = '';
     if(isTimerActive) visualClass = isA ? 'timer-glow' : 'inactive-dim';
     return `<div class="sel-chip ${isA} ${visualClass}" data-w="${w}">${w}</div>`;
-  }).join('');
+  }).join('') + (!isTimerActive && isEditMode ? `<div class="sel-chip add-chip" data-action="add-worktype" style="border:1px dashed var(--accent); color:var(--accent); background:transparent;">＋ Work Type</div>` : '');
 }
 
 /* ---------- Chip Event Delegation ---------- */
@@ -472,13 +489,29 @@ function handleChipInteraction(e, type) {
   if (!chip) return;
   
   if (e.type === 'click') {
-    if (type === 'subject') { selectedSubject = chip.dataset.name; selectedSubMenu = ''; }
-    if (type === 'sub') { selectedSubMenu = chip.dataset.sub; }
-    if (type === 'workType') { selectedWorkType = chip.dataset.w; }
+    const action = chip.dataset.action;
+    if (action) {
+      if(action === 'add-subject') openAddModal('subject');
+      if(action === 'add-sub') openAddModal('sub');
+      if(action === 'add-worktype') openAddModal('workType');
+      return;
+    }
+    if (type === 'subject') { 
+      selectedSubject = (selectedSubject === chip.dataset.name) ? '' : chip.dataset.name; 
+      selectedSubMenu = ''; 
+    }
+    if (type === 'sub') { 
+      selectedSubMenu = (selectedSubMenu === chip.dataset.sub) ? '' : chip.dataset.sub; 
+    }
+    if (type === 'workType') { 
+      selectedWorkType = (selectedWorkType === chip.dataset.w) ? '' : chip.dataset.w; 
+    }
     renderSelectionChips();
-  } else if (e.type === 'dblclick' || e.type === 'longpress') {
+  } else if (e.type === 'dblclick' || e.type === 'longpress' || e.type === 'contextmenu') {
+    if (chip.classList.contains('add-chip')) return;
     e.preventDefault();
     if (type === 'subject') openEditModal('subject', chip.dataset.name);
+    if (type === 'sub') openEditModal('sub', chip.dataset.sub);
     if (type === 'workType') openEditModal('workType', chip.dataset.w);
   }
 }
@@ -489,6 +522,7 @@ const setupDelegation = (areaId, type) => {
   if (!el) return;
   el.addEventListener('click', (e) => handleChipInteraction(e, type));
   el.addEventListener('dblclick', (e) => handleChipInteraction(e, type));
+  el.addEventListener('contextmenu', (e) => handleChipInteraction(e, type));
   el.addEventListener('touchstart', (e) => {
     if(isTimerActive) return;
     const chip = e.target.closest('.sel-chip');
@@ -513,7 +547,9 @@ let editContext = { type: null, oldName: null }; // type: 'subject' | 'workType'
 
 function openEditModal(type, name) {
   editContext = { type, oldName: name };
-  modalTitle.textContent = type === 'subject' ? 'বিষয় সম্পাদনা' : 'কাজের ধরন সম্পাদনা';
+  if(type === 'subject') modalTitle.textContent = 'বিষয় সম্পাদনা';
+  else if(type === 'sub') modalTitle.textContent = 'সাব-সাবজেক্ট সম্পাদনা';
+  else modalTitle.textContent = 'কাজের ধরন সম্পাদনা';
   modalInput.value = name;
   editModal.classList.add('show');
 }
@@ -537,6 +573,14 @@ document.getElementById('modalDelete').addEventListener('click', async () => {
     prefs.subjects = prefs.subjects.filter(s => s.name !== oldName);
     if (selectedSubject === oldName) selectedSubject = prefs.subjects[0].name;
   } 
+  else if (type === 'sub') {
+    const subj = prefs.subjects.find(s => s.name === selectedSubject);
+    if (subj && subj.sub) {
+      if (subj.sub.length <= 1) { showToast('অন্তত একটি সাব-সাবজেক্ট থাকতে হবে'); return; }
+      subj.sub = subj.sub.filter(x => x !== oldName);
+      if (selectedSubMenu === oldName) selectedSubMenu = subj.sub[0];
+    }
+  }
   else if (type === 'workType') {
     if (prefs.workTypes.length <= 1) { showToast('অন্তত একটি কাজের ধরন থাকতে হবে'); return; }
     prefs.workTypes = prefs.workTypes.filter(w => w !== oldName);
@@ -562,6 +606,15 @@ document.getElementById('modalSave').addEventListener('click', async () => {
     subj.name = newName;
     if (selectedSubject === oldName) selectedSubject = newName;
   } 
+  else if (type === 'sub') {
+    const subj = prefs.subjects.find(s => s.name === selectedSubject);
+    if (subj && subj.sub) {
+      if (subj.sub.includes(newName)) { showToast('এই নামটি আগেই আছে'); return; }
+      const idx = subj.sub.indexOf(oldName);
+      if (idx !== -1) subj.sub[idx] = newName;
+      if (selectedSubMenu === oldName) selectedSubMenu = newName;
+    }
+  }
   else if (type === 'workType') {
     if (prefs.workTypes.includes(newName)) { showToast('এই নামটি আগেই আছে'); return; }
     const idx = prefs.workTypes.indexOf(oldName);
@@ -574,32 +627,69 @@ document.getElementById('modalSave').addEventListener('click', async () => {
   closeEditModal();
 });
 
-document.getElementById('addSubjectBtn').addEventListener('click', async ()=>{
-  const inp = document.getElementById('newSubject');
-  const isC = document.getElementById('isCoreCheck').checked;
-  const isNS = document.getElementById('isNonStudyCheck').checked;
-  const val = sanitizeHTML(inp.value.trim());
-  if(!val) return;
-  if(prefs.subjects.find(s => s.name === val)){ showToast('এই বিষয় আগেই আছে'); return; }
-  prefs.subjects.push({ name: val, isCore: isC, isNonStudy: isNS }); 
-  inp.value=''; 
-  document.getElementById('isCoreCheck').checked = false;
-  document.getElementById('isNonStudyCheck').checked = false;
-  selectedSubject = val;
-  await savePrefs(); 
-  renderSelectionChips();
-});
+/* ---------- Add Modal Logic ---------- */
+const addModal = document.getElementById('addModal');
+const addModalTitle = document.getElementById('addModalTitle');
+const addModalInput = document.getElementById('addModalInput');
+const addModalOptions = document.getElementById('addModalOptions');
+const modalIsCoreCheck = document.getElementById('modalIsCoreCheck');
+const modalIsNonStudyCheck = document.getElementById('modalIsNonStudyCheck');
 
-document.getElementById('addWorkTypeBtn').addEventListener('click', async ()=>{
-  const inp = document.getElementById('newWorkType');
-  const val = sanitizeHTML(inp.value.trim());
-  if(!val) return;
-  if(prefs.workTypes.includes(val)){ showToast('এই কাজের ধরন আগেই আছে'); return; }
-  prefs.workTypes.push(val); 
-  inp.value=''; 
-  selectedWorkType = val;
+let addContextType = null;
+
+function openAddModal(type) {
+  addContextType = type;
+  addModalInput.value = '';
+  modalIsCoreCheck.checked = false;
+  modalIsNonStudyCheck.checked = false;
+  
+  if (type === 'subject') {
+    addModalTitle.textContent = 'নতুন বিষয় যোগ করুন';
+    addModalOptions.style.display = 'block';
+  } else if (type === 'sub') {
+    addModalTitle.textContent = 'নতুন সাব-সাবজেক্ট যোগ করুন';
+    addModalOptions.style.display = 'none';
+  } else if (type === 'workType') {
+    addModalTitle.textContent = 'নতুন কাজের ধরন যোগ করুন';
+    addModalOptions.style.display = 'none';
+  }
+  
+  addModal.classList.add('show');
+  setTimeout(() => addModalInput.focus(), 100);
+}
+
+function closeAddModal() {
+  addModal.classList.remove('show');
+}
+
+document.getElementById('addModalCancel').addEventListener('click', closeAddModal);
+
+document.getElementById('addModalSave').addEventListener('click', async () => {
+  const val = sanitizeHTML(addModalInput.value.trim());
+  if (!val) return;
+  
+  if (addContextType === 'subject') {
+    if(prefs.subjects.find(s => s.name === val)){ showToast('এই বিষয় আগেই আছে'); return; }
+    prefs.subjects.push({ name: val, isCore: modalIsCoreCheck.checked, isNonStudy: modalIsNonStudyCheck.checked }); 
+    selectedSubject = val;
+  } else if (addContextType === 'sub') {
+    if(!selectedSubject) { showToast('আগে একটি বিষয় নির্বাচন করুন'); return; }
+    const subjObj = prefs.subjects.find(s => s.name === selectedSubject);
+    if(subjObj) {
+      if(!subjObj.sub) subjObj.sub = [];
+      if(subjObj.sub.includes(val)) { showToast('এই সাব-সাবজেক্ট আগেই আছে!'); return; }
+      subjObj.sub.push(val);
+      selectedSubMenu = val;
+    }
+  } else if (addContextType === 'workType') {
+    if(prefs.workTypes.includes(val)){ showToast('এই কাজের ধরন আগেই আছে'); return; }
+    prefs.workTypes.push(val); 
+    selectedWorkType = val;
+  }
+  
   await savePrefs(); 
   renderSelectionChips();
+  closeAddModal();
 });
 
 /* ---------- pomodoro ---------- */
@@ -665,6 +755,9 @@ async function finish(){
   
   isTimerActive = false;
   renderSelectionChips();
+  
+  // Remove glowing timer class
+  displayEl.classList.remove('glowing-timer-active');
 
   const sname = selectedSubMenu ? `${selectedSubject} - ${selectedSubMenu}` : selectedSubject;
 
@@ -693,6 +786,10 @@ async function finish(){
   await refreshEverything();
 }
 function startTimer(fromResume=false){
+  if(!selectedSubject) {
+    showToast('আগে একটি বিষয় নির্বাচন করুন');
+    return;
+  }
   if(!fromResume){
     if(pomodoroMode){
       totalSeconds = (pomoPhase==='work' ? WORK_MIN : BREAK_MIN) * 60;
@@ -715,10 +812,13 @@ function startTimer(fromResume=false){
   } else if(stopwatchMode){
     hintEl.textContent = selectedSubject+' — স্টপওয়াচ চলছে… (Reset চাপলে সময় সেভ হবে)';
   } else {
-    hintEl.textContent = selectedSubject+' পড়া চলছে…';
   }
   hoursEl.disabled=true; minutesEl.disabled=true;
   isTimerActive = true; renderSelectionChips();
+  
+  // Add glowing timer class
+  displayEl.classList.add('glowing-timer-active');
+  
   render(); clearInterval(tickHandle); tickHandle = setInterval(tick,30);
   
   localSet(LS_TIMERSTATE, { 
@@ -734,9 +834,12 @@ function pauseTimer(){
   } else {
     remaining = Math.max(0,(endTime-Date.now())/1000);
   }
-  clearInterval(tickHandle);
   hintEl.textContent = stopwatchMode ? 'বিরতিতে আছে — চালিয়ে যেতে Start চাপো (Reset চাপলে সময় সেভ হবে)' : 'বিরতিতে আছে — চালিয়ে যেতে Start চাপো';
   render();
+  
+  // Remove glowing timer class
+  displayEl.classList.remove('glowing-timer-active');
+  
   localSet(LS_TIMERSTATE, { 
     running:false, remaining, totalSeconds, subject: selectedSubject, 
     subMenu: selectedSubMenu, workType: selectedWorkType,
@@ -796,9 +899,17 @@ const fsContainer = document.getElementById('fsContainer');
 const fullscreenBtn = document.getElementById('fullscreenBtn');
 fullscreenBtn.addEventListener('click', () => {
   if (!document.fullscreenElement) {
-    fsContainer.requestFullscreen().catch(err => console.log(err));
+    fsContainer.requestFullscreen().then(() => {
+      if(screen.orientation && screen.orientation.lock) {
+        screen.orientation.lock('landscape').catch(e => console.log('Orientation lock failed:', e));
+      }
+    }).catch(err => console.log(err));
   } else {
-    document.exitFullscreen();
+    document.exitFullscreen().then(() => {
+      if(screen.orientation && screen.orientation.unlock) {
+        screen.orientation.unlock();
+      }
+    });
   }
 });
 
@@ -953,7 +1064,7 @@ function renderHistory(){
   const sorted = allSess.sort((a,b)=> (b.ts||0)-(a.ts||0)).slice(0,30);
   if(sorted.length===0){ list.innerHTML='<div class="empty-note">এখনও কোনো সেশন নেই</div>'; return; }
   list.innerHTML = sorted.map(s=>{
-    const isNS = s.id && String(s.id).startsWith('ns');
+    const isNS = s.isNonStudy || (s.id && String(s.id).startsWith('ns'));
     const badge = isNS ? `<span style="background:var(--line); padding:2px 6px; border-radius:4px; font-size:0.7rem;">Non-Study</span>` : '';
     return `
     <div class="hist-row">
@@ -978,6 +1089,19 @@ function getExportSessions(){
   const range = document.getElementById('exportRange').value;
   const allSess = [...sessions, ...nonStudySessions];
   if(range === 'all') return allSess;
+  if(range === 'today') {
+    const today = todayStr();
+    return allSess.filter(s => s.date === today);
+  }
+  if(range === '24h') {
+    const limit = Date.now() - 24 * 3600 * 1000;
+    return allSess.filter(s => s.ts >= limit);
+  }
+  if(range === '48h') {
+    const limit = Date.now() - 48 * 3600 * 1000;
+    return allSess.filter(s => s.ts >= limit);
+  }
+  
   const limitDate = daysAgoStr(parseInt(range));
   return allSess.filter(s => s.date >= limitDate);
 }
@@ -992,11 +1116,17 @@ document.getElementById('exportPdfBtn').addEventListener('click', ()=>{
   const doc = new jsPDF();
   
   const range = document.getElementById('exportRange').value;
-  const titleStr = range === 'all' ? 'All Time Study Report' : `Study Report (Last ${range} Days)`;
+  let titleStr = 'Study Report';
+  if(range === 'all') titleStr = 'All Time Study Report';
+  else if(range === 'today') titleStr = 'Study Report (Today)';
+  else if(range === '24h') titleStr = 'Study Report (Last 24 Hours)';
+  else if(range === '48h') titleStr = 'Study Report (Last 48 Hours)';
+  else titleStr = `Study Report (Last ${range} Days)`;
   
   let studyMin = 0; let nonStudyMin = 0;
   data.forEach(s => {
-    if(s.id && String(s.id).startsWith('ns')) nonStudyMin += s.minutes;
+    const isNS = s.isNonStudy || (s.id && String(s.id).startsWith('ns'));
+    if(isNS) nonStudyMin += s.minutes;
     else studyMin += s.minutes;
   });
   
@@ -1026,7 +1156,7 @@ document.getElementById('exportPdfBtn').addEventListener('click', ()=>{
   };
 
   const tableData = data.sort((a,b)=>(a.ts||0) - (b.ts||0)).map(s => {
-    const isNS = s.id && String(s.id).startsWith('ns') ? 'Non-Study' : 'Study';
+    const isNS = s.isNonStudy || (s.id && String(s.id).startsWith('ns')) ? 'Non-Study' : 'Study';
     let subj = s.subject;
     if (b2eSubject[subj]) subj = b2eSubject[subj];
     let wt = s.workType || 'Other';
@@ -1044,7 +1174,15 @@ document.getElementById('exportPdfBtn').addEventListener('click', ()=>{
     theme: 'grid',
     headStyles: { fillColor: [201, 150, 47] },
     alternateRowStyles: { fillColor: [250, 250, 250] },
-    styles: { font: 'helvetica', fontSize: 10 }
+    styles: { font: 'helvetica', fontSize: 10 },
+    columnStyles: {
+      0: { cellWidth: 22 }, // Date
+      1: { cellWidth: 33 }, // Time
+      2: { cellWidth: 'auto' }, // Subject (Expands)
+      3: { cellWidth: 24 }, // Work Type
+      4: { cellWidth: 18 }, // Duration
+      5: { cellWidth: 22 }  // Category
+    }
   });
 
   doc.save('focus-timer-report.pdf');
@@ -1158,10 +1296,10 @@ document.addEventListener('visibilitychange', ()=>{ if(!document.hidden) render(
   renderAuthBar();
   await loadAll();
   
-  if(!prefs.subjects.find(s => s.name === selectedSubject)) {
+  if(selectedSubject !== '' && !prefs.subjects.find(s => s.name === selectedSubject)) {
     selectedSubject = prefs.subjects[0]?.name || '';
   }
-  if(!prefs.workTypes.includes(selectedWorkType)) {
+  if(selectedWorkType !== '' && !prefs.workTypes.includes(selectedWorkType)) {
     selectedWorkType = prefs.workTypes[0] || '';
   }
   
@@ -1175,8 +1313,153 @@ if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => {
     navigator.serviceWorker.register('./sw.js').then(registration => {
       console.log('SW registered: ', registration.scope);
-    }).catch(err => {
-      console.log('SW registration failed: ', err);
     });
   });
 }
+
+/* ---------- Bottom Navigation ---------- */
+document.querySelectorAll('.bottom-nav .nav-item').forEach(item => {
+  item.addEventListener('click', () => {
+    // Remove active class from all items
+    document.querySelectorAll('.bottom-nav .nav-item').forEach(nav => nav.classList.remove('active'));
+    // Add active class to clicked item
+    item.classList.add('active');
+
+    // Hide all view sections
+    document.querySelectorAll('.view-section').forEach(view => view.classList.remove('active'));
+    // Show target view
+    const targetId = item.getAttribute('data-target');
+    document.getElementById(targetId).classList.add('active');
+  });
+});
+
+/* ---------- Bulk Delete ---------- */
+document.getElementById('bulkDeleteBtn').addEventListener('click', async () => {
+  const fromDate = document.getElementById('bulkDelFrom').value;
+  const toDate = document.getElementById('bulkDelTo').value;
+
+  if(!fromDate || !toDate) {
+    showToast('অনুগ্রহ করে From এবং To তারিখ সিলেক্ট করুন!');
+    return;
+  }
+  if(fromDate > toDate) {
+    showToast('From তারিখ To তারিখের চেয়ে বড় হতে পারে না!');
+    return;
+  }
+
+  const allSess = [...sessions, ...nonStudySessions];
+  const toDelete = allSess.filter(s => s.date >= fromDate && s.date <= toDate);
+  
+  if(toDelete.length === 0) {
+    showToast('এই তারিখের মধ্যে কোনো সেশন পাওয়া যায়নি!');
+    return;
+  }
+
+  if(confirm(`আপনি কি নিশ্চিত যে ${fromDate} থেকে ${toDate} তারিখের ${toDelete.length} টি সেশন মুছে ফেলতে চান? এটি আর ফেরত পাওয়া যাবে না!`)) {
+    for(const s of toDelete) {
+      await deleteSession(s.id);
+    }
+    await refreshEverything();
+    showToast(`${toDelete.length} টি সেশন সফলভাবে মুছে ফেলা হয়েছে!`);
+  }
+});
+
+/* ---------- Advanced Features (Glowing, Confetti, Sub-subjects, Analytics) ---------- */
+
+// 1. Confetti Logic
+function triggerConfetti() {
+  const container = document.getElementById('particles');
+  if(!container) return;
+  container.innerHTML = ''; // clear old
+  const colors = ['#FFDF00', '#c9962f', '#FFF8DC', '#DAA520'];
+  for (let i = 0; i < 50; i++) {
+    const p = document.createElement('div');
+    p.classList.add('particle');
+    p.style.left = (Math.random() * 100) + 'vw';
+    p.style.top = '-20px';
+    p.style.background = colors[Math.floor(Math.random() * colors.length)];
+    const size = Math.random() * 8 + 4;
+    p.style.width = size + 'px'; p.style.height = size + 'px';
+    if(Math.random() > 0.5) p.style.borderRadius = '0'; // squares
+    const duration = Math.random() * 2 + 1.5;
+    const delay = Math.random() * 0.5;
+    p.style.animationDuration = duration + 's';
+    p.style.animationDelay = delay + 's';
+    container.appendChild(p);
+    setTimeout(() => p.remove(), (duration + delay) * 1000);
+  }
+}
+
+// Intercept renderTarget to trigger confetti when reaching target
+const oldRenderTarget = renderTarget;
+renderTarget = function() {
+  const today = todayStr();
+  const prevDone = parseInt(document.getElementById('targetDone').getAttribute('data-prev') || '0');
+  oldRenderTarget();
+  const done = sessions.filter(s=>s.date===today).reduce((a,s)=>a+s.minutes,0);
+  document.getElementById('targetDone').setAttribute('data-prev', done);
+  
+  if (prevDone < prefs.dailyTarget && done >= prefs.dailyTarget) {
+    triggerConfetti();
+    showToast('🎉 আজকের লক্ষ্য পূরণ হয়েছে! অসাধারণ কাজ!');
+  }
+};
+
+// 2. Sub-subject logic removed as it's now part of the unified Add Modal.
+
+// 3. 7-Day Subject Analytics Logic
+function renderSubjectAnalytics() {
+  const listContainer = document.getElementById('subjectRankingList');
+  if(!listContainer) return;
+  
+  // Get date 7 days ago
+  const d = new Date();
+  d.setDate(d.getDate() - 7);
+  const sevenDaysAgoStr = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+
+  // Filter study sessions (exclude non-study)
+  const recentSessions = sessions.filter(s => s.date >= sevenDaysAgoStr);
+  
+  const subjMap = {};
+  recentSessions.forEach(s => {
+    // Group by main subject (if saved as "Subject - Sub", extract main subject or just group by the raw string)
+    // Actually, user wants sub-subjects to be ranked if we want, but "7TI SUBJECT ER JONNO BATCH"
+    // Let's rank by the exact saved subject string (which includes sub-subject)
+    const name = s.subject;
+    subjMap[name] = (subjMap[name] || 0) + s.minutes;
+  });
+
+  const sorted = Object.entries(subjMap).sort((a,b) => b[1] - a[1]);
+  
+  if (sorted.length === 0) {
+    listContainer.innerHTML = '<div style="color:var(--text-dim); font-size:0.9rem;">গত ৭ দিনে কোনো পড়াশোনা হয়নি।</div>';
+    return;
+  }
+
+  listContainer.innerHTML = sorted.map((entry, index) => {
+    const name = entry[0];
+    const mins = entry[1];
+    
+    let badgeClass = 'normal';
+    let badgeIcon = `${index + 1}`;
+    
+    if (index === 0) { badgeClass = 'gold'; badgeIcon = '🏆'; }
+    else if (index === 1) { badgeClass = 'silver'; badgeIcon = '🥈'; }
+    else if (index === 2) { badgeClass = 'bronze'; badgeIcon = '🥉'; }
+
+    return `
+      <div class="subj-rank-item">
+        <div class="badge ${badgeClass}">${badgeIcon}</div>
+        <div class="rank-subj-name">${name}</div>
+        <div class="rank-subj-time">${mins} মিনিট</div>
+      </div>
+    `;
+  }).join('');
+}
+
+// Hook analytics into refreshEverything
+const oldRefreshEverything = refreshEverything;
+refreshEverything = async function() {
+  await oldRefreshEverything();
+  renderSubjectAnalytics();
+};

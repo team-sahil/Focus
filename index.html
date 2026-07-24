@@ -6,8 +6,8 @@
 <meta name="theme-color" content="#0d0d0c">
 <link rel="manifest" href="./manifest.json">
 <title>Focus Study Timer</title>
-<link rel="icon" type="image/png" href="./icon-192.png">
-<link rel="apple-touch-icon" href="./icon-192.png">
+<link rel="icon" type="image/svg+xml" href="./icon-192.svg">
+<link rel="apple-touch-icon" href="./icon-192.svg">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.28/jspdf.plugin.autotable.min.js"></script>
 <link rel="stylesheet" href="./style.css">
@@ -23,37 +23,21 @@
   </div>
   <div class="cloudnote" id="cloudnote">সাইন ইন না করলে ডেটা শুধু এই ডিভাইসে থাকবে</div>
 
+  <!-- VIEW 1: TIMER -->
+  <div id="view-timer" class="view-section active">
+
   <div class="subject-section" id="subjectSelectionArea">
-    <label class="field-label">বিষয়</label>
+    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+      <label class="field-label" style="margin-bottom:0;">বিষয়</label>
+      <button id="editModeToggle" style="background:transparent; border:none; color:var(--text-dim); cursor:pointer; font-size:1.1rem; padding:4px;" title="এডিট মোড">✏️</button>
+    </div>
     <div class="sel-chips" id="subjSelectChips"></div>
     <div class="sel-chips" id="subMenuChips" style="display:none; margin-top:-4px; padding-left:12px;"></div>
-    
-    <div class="subject-manage" style="margin-top:10px; margin-bottom:4px;">
-      <div style="display:flex; gap:8px; width:100%;">
-        <input type="text" id="newSubject" placeholder="নতুন বিষয় যোগ করুন">
-        <button id="addSubjectBtn" class="primary">+</button>
-      </div>
-      <label style="font-size:0.85rem; color:var(--text-dim); display:flex; align-items:center; gap:8px; cursor:pointer;">
-        <input type="checkbox" id="isCoreCheck" style="width:auto; margin:0; cursor:pointer;">
-        কোর সাবজেক্ট হিসেবে যুক্ত করুন (Golden Light Effect)
-      </label>
-      <label style="font-size:0.85rem; color:var(--text-dim); display:flex; align-items:center; gap:8px; cursor:pointer; margin-top:6px;">
-        <input type="checkbox" id="isNonStudyCheck" style="width:auto; margin:0; cursor:pointer;">
-        পড়াশোনার বাইরের কাজ (Non-Study, লোকাল সেভ হবে)
-      </label>
-    </div>
   </div>
 
   <div class="subject-section" id="workTypeSelectionArea" style="margin-top:16px;">
     <label class="field-label">কাজের ধরন (Work Type)</label>
     <div class="sel-chips" id="workTypeChips"></div>
-    
-    <div class="subject-manage" style="margin-top:10px; margin-bottom:4px;">
-      <div style="display:flex; gap:8px; width:100%;">
-        <input type="text" id="newWorkType" placeholder="নতুন কাজের ধরন যোগ করুন">
-        <button id="addWorkTypeBtn" class="primary">+</button>
-      </div>
-    </div>
   </div>
 
 
@@ -96,7 +80,10 @@
     </div>
   </div>
 
-  <hr class="divider">
+  </div> <!-- END VIEW 1 -->
+
+  <!-- VIEW 2: STATS -->
+  <div id="view-stats" class="view-section">
 
   <div class="card">
     <div class="card-row">
@@ -148,22 +135,39 @@
 
   <hr class="divider">
 
+  <!-- 7-Day Subject Analytics & Badges -->
+  <div class="stats-title" style="margin-bottom:14px; display:flex; justify-content:space-between; align-items:center;">
+    <span>গত ৭ দিনের বিষয় র‍্যাংকিং</span>
+    <span style="font-size:0.8rem; font-weight:normal; color:var(--gold);">🏆 Badges</span>
+  </div>
+  <div id="subjectRankingList" class="subj-rank-list">
+    <!-- Ranks injected via JS -->
+  </div>
+
+  <hr class="divider">
+
   <div class="stats-title" style="margin-bottom:14px;">গত 12 সপ্তাহ</div>
   <div class="heatmap-scroll"><div class="heatmap-grid" id="heatmap"></div></div>
   <div class="heatmap-legend">
     কম <div class="hcell" style="background:#1c1c1a"></div><div class="hcell" style="background:#4a3a1a"></div><div class="hcell" style="background:#7a5f22"></div><div class="hcell" style="background:#c9962f"></div> বেশি
   </div>
 
-  <hr class="divider">
+  </div> <!-- END VIEW 2 -->
+
+  <!-- VIEW 3: HISTORY & SETTINGS -->
+  <div id="view-history" class="view-section">
 
   <div class="stats-title" style="margin-bottom:14px;">সেশন হিস্ট্রি</div>
   <div class="history-list" id="historyList"></div>
   <div class="stats-title" style="margin-bottom:14px;">ডেটা ব্যাকআপ ও এক্সপোর্ট</div>
   <div class="export-row">
     <select id="exportRange" class="export-select">
-      <option value="7">গত ৭ দিন (PDF)</option>
-      <option value="30" selected>গত ৩০ দিন (PDF)</option>
-      <option value="all">পুরো হিস্ট্রি (All Time)</option>
+      <option value="today">আজ (Today)</option>
+      <option value="24h">শেষ ২৪ ঘন্টা (Last 24h)</option>
+      <option value="48h">শেষ ৪৮ ঘন্টা (Last 48h)</option>
+      <option value="7">গত ৭ দিন (7 Days)</option>
+      <option value="30" selected>গত ৩০ দিন (30 Days)</option>
+      <option value="all">পুরো সময়কাল (All Time)</option>
     </select>
     <div style="display:flex; gap:10px; width:100%;">
       <button class="export-btn pdf" id="exportPdfBtn">PDF</button>
@@ -175,9 +179,39 @@
     </div>
   </div>
 
-</div>
+  <div class="stats-title" style="margin-top:14px; margin-bottom:14px; color:#ef4444;">Bulk Delete (Date Range)</div>
+  <div class="export-row">
+    <div style="display:flex; gap:10px; width:100%; align-items:center;">
+      <div style="flex:1;">
+        <label style="font-size:0.8rem; color:var(--text-dim);">From Date</label>
+        <input type="date" id="bulkDelFrom" class="modal-input" style="width:100%; margin-top:4px;">
+      </div>
+      <div style="flex:1;">
+        <label style="font-size:0.8rem; color:var(--text-dim);">To Date</label>
+        <input type="date" id="bulkDelTo" class="modal-input" style="width:100%; margin-top:4px;">
+      </div>
+    </div>
+    <button class="export-btn" id="bulkDeleteBtn" style="border-color:#ef4444; color:#ef4444; margin-top:10px;">Delete Sessions</button>
+  </div>
+
+  </div> <!-- END VIEW 3 -->
+
+</div> <!-- END wrap -->
 
 <div class="toast" id="toast"></div>
+
+<!-- Bottom Navigation -->
+<nav class="bottom-nav">
+  <div class="nav-item active" data-target="view-timer">
+    <div class="nav-chip">⏱️ Timer</div>
+  </div>
+  <div class="nav-item" data-target="view-stats">
+    <div class="nav-chip">📊 Stats</div>
+  </div>
+  <div class="nav-item" data-target="view-history">
+    <div class="nav-chip">⚙️ Settings</div>
+  </div>
+</nav>
 
 <!-- Edit/Delete Modal -->
 <div class="modal-overlay" id="editModal">
@@ -193,6 +227,34 @@
     </div>
   </div>
 </div>
+
+<!-- Add Modal -->
+<div class="modal-overlay" id="addModal">
+  <div class="modal-box">
+    <div class="modal-title" id="addModalTitle">নতুন যোগ করুন</div>
+    <div class="modal-input">
+      <input type="text" id="addModalInput" placeholder="নাম লিখুন">
+    </div>
+    
+    <div id="addModalOptions" style="display:none; text-align:left; margin-bottom:15px; margin-top:-5px;">
+      <label style="font-size:0.85rem; color:var(--text-dim); display:flex; align-items:center; gap:8px; cursor:pointer;">
+        <input type="checkbox" id="modalIsCoreCheck" style="width:auto; margin:0; cursor:pointer;">
+        কোর সাবজেক্ট (Golden Effect)
+      </label>
+      <label style="font-size:0.85rem; color:var(--text-dim); display:flex; align-items:center; gap:8px; cursor:pointer; margin-top:6px;">
+        <input type="checkbox" id="modalIsNonStudyCheck" style="width:auto; margin:0; cursor:pointer;">
+        নন-স্টাডি (Non-Study)
+      </label>
+    </div>
+
+    <div class="modal-btn-row" style="justify-content: flex-end;">
+      <button class="modal-btn cancel" id="addModalCancel">বাতিল</button>
+      <button class="modal-btn primary" id="addModalSave">যোগ করুন</button>
+    </div>
+  </div>
+</div>
+
+<div id="particles"></div>
 
 <script type="module" src="./app.js"></script>
 </body>

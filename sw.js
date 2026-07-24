@@ -1,4 +1,4 @@
-const CACHE_NAME = 'focus-timer-cache-v1';
+const CACHE_NAME = 'focus-timer-cache-v3';
 const urlsToCache = [
   './index.html',
   './manifest.json'
@@ -34,7 +34,7 @@ self.addEventListener('activate', event => {
 // Fetch events
 self.addEventListener('fetch', event => {
   event.respondWith(
-    caches.match(event.request)
+    caches.match(event.request, { ignoreSearch: true })
       .then(response => {
         // Return cached response if found
         if (response) {
@@ -53,8 +53,7 @@ self.addEventListener('fetch', event => {
 
             caches.open(CACHE_NAME)
               .then(function(cache) {
-                // Don't cache API calls or external CDN scripts (firebase, jspdf) if we just want basic offline HTML
-                // But caching everything basic helps with offline PWA
+                // Cache basic requests for offline use
                 if(event.request.url.startsWith(self.location.origin)){
                    cache.put(event.request, responseToCache);
                 }
@@ -62,7 +61,15 @@ self.addEventListener('fetch', event => {
 
             return response;
           }
-        );
+        ).catch(function() {
+          // Fallback to index.html if offline and requesting a web page
+          if (event.request.mode === 'navigate' || (event.request.headers.get('accept') && event.request.headers.get('accept').includes('text/html'))) {
+            return caches.match('./index.html').then(function(cacheResp) {
+              return cacheResp || Response.error();
+            });
+          }
+          return Response.error();
+        });
       })
   );
 });

@@ -1,0 +1,228 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Premium Legendary Sample</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&display=swap');
+
+  :root {
+    --bg-dark: #0a0a0a;
+    --gold: #c9962f;
+    --gold-glow: rgba(201, 150, 47, 0.6);
+  }
+
+  body {
+    background-color: var(--bg-dark);
+    color: #fff;
+    font-family: 'Inter', sans-serif;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 40px 20px;
+    min-height: 100vh;
+    margin: 0;
+    overflow-x: hidden;
+  }
+
+  h1 {
+    color: var(--gold);
+    text-shadow: 0 0 15px var(--gold-glow);
+    font-weight: 800;
+  }
+
+  /* 1. Glassmorphism & Neon Border Card */
+  .premium-card {
+    background: rgba(255, 255, 255, 0.03);
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+    border: 1px solid rgba(201, 150, 47, 0.3);
+    border-radius: 20px;
+    padding: 30px;
+    width: 90%;
+    max-width: 400px;
+    text-align: center;
+    margin-bottom: 30px;
+    box-shadow: 0 10px 30px rgba(0,0,0,0.5), inset 0 0 15px rgba(201, 150, 47, 0.1);
+    transition: transform 0.3s ease, box-shadow 0.3s ease;
+  }
+  
+  .premium-card:hover {
+    transform: translateY(-5px);
+    box-shadow: 0 15px 40px rgba(0,0,0,0.6), inset 0 0 25px rgba(201, 150, 47, 0.2);
+    border: 1px solid rgba(201, 150, 47, 0.6);
+  }
+
+  /* 2. Breathing Gold Effect Timer */
+  .glowing-timer {
+    font-size: 3.5rem;
+    font-weight: 800;
+    color: #fff;
+    text-shadow: 0 0 10px var(--gold-glow), 0 0 20px var(--gold-glow), 0 0 40px var(--gold);
+    animation: breathe 3s infinite alternate ease-in-out;
+    margin: 20px 0;
+  }
+
+  @keyframes breathe {
+    0% {
+      text-shadow: 0 0 10px var(--gold-glow), 0 0 20px var(--gold-glow);
+      transform: scale(1);
+    }
+    100% {
+      text-shadow: 0 0 20px var(--gold-glow), 0 0 40px var(--gold), 0 0 60px var(--gold);
+      transform: scale(1.05);
+    }
+  }
+
+  /* 3. Legendary Badge */
+  .badge-container {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    gap: 15px;
+    margin-top: 10px;
+  }
+
+  .mythic-badge {
+    width: 60px;
+    height: 60px;
+    border-radius: 50%;
+    background: linear-gradient(135deg, #FFDF00, #c9962f, #8B6508);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    box-shadow: 0 0 15px var(--gold-glow), 0 0 30px var(--gold-glow);
+    animation: spin-glow 5s linear infinite;
+    position: relative;
+  }
+
+  .mythic-badge::after {
+    content: "🏆";
+    font-size: 1.8rem;
+    position: absolute;
+    animation: counter-spin 5s linear infinite;
+  }
+
+  @keyframes spin-glow {
+    0% { transform: rotate(0deg); box-shadow: 0 0 10px var(--gold-glow); }
+    50% { box-shadow: 0 0 30px var(--gold); }
+    100% { transform: rotate(360deg); box-shadow: 0 0 10px var(--gold-glow); }
+  }
+  
+  @keyframes counter-spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(-360deg); }
+  }
+
+  /* Action Button */
+  .action-btn {
+    background: linear-gradient(90deg, #c9962f, #FFDF00);
+    color: #000;
+    border: none;
+    padding: 12px 24px;
+    font-size: 1rem;
+    font-weight: 800;
+    border-radius: 30px;
+    cursor: pointer;
+    box-shadow: 0 5px 15px rgba(201, 150, 47, 0.4);
+    transition: all 0.2s ease;
+  }
+  .action-btn:hover {
+    transform: scale(1.05);
+    box-shadow: 0 8px 25px rgba(201, 150, 47, 0.6);
+  }
+
+  /* 4. Confetti Particles System Container */
+  #particles {
+    position: fixed;
+    top: 0; left: 0; width: 100%; height: 100%;
+    pointer-events: none;
+    z-index: 9999;
+  }
+
+  .particle {
+    position: absolute;
+    width: 8px;
+    height: 8px;
+    background-color: var(--gold);
+    border-radius: 50%;
+    animation: fall linear forwards;
+  }
+
+  @keyframes fall {
+    0% { transform: translateY(-10px) rotate(0deg); opacity: 1; }
+    100% { transform: translateY(100vh) rotate(360deg); opacity: 0; }
+  }
+
+</style>
+</head>
+<body>
+
+  <h1>Premium UI Showcase</h1>
+  <p style="color:var(--text-dim); text-align:center; max-width: 400px;">
+    এখানে সম্পূর্ণ অ্যাপ নেই। শুধু নতুন ডিজাইন (গ্লো, নিয়ন বর্ডার, ব্যাজ এবং পার্টিকেল) দেখানো হয়েছে।
+  </p>
+
+  <!-- Card 1: Glowing Timer -->
+  <div class="premium-card">
+    <div style="color: #c9962f; font-weight: 600; text-transform: uppercase; letter-spacing: 2px; font-size: 0.8rem;">Deep Focus</div>
+    <div class="glowing-timer">25:00</div>
+    <button class="action-btn" id="confettiBtn">Target Reached!</button>
+  </div>
+
+  <!-- Card 2: Badges -->
+  <div class="premium-card">
+    <h3 style="margin-top:0; color: #fff;">Legendary Streak</h3>
+    <p style="font-size: 0.9rem; color: #aaa;">You have studied for 50 days straight!</p>
+    
+    <div class="badge-container">
+      <div class="mythic-badge" title="50 Days Mythic Badge"></div>
+    </div>
+    <p style="font-size: 0.8rem; margin-top:15px; color: #c9962f;">Mythic Badge Unlocked</p>
+  </div>
+
+  <div id="particles"></div>
+
+<script>
+  // Simple Golden Confetti / Particle logic
+  document.getElementById('confettiBtn').addEventListener('click', () => {
+    const container = document.getElementById('particles');
+    const colors = ['#FFDF00', '#c9962f', '#FFF8DC', '#DAA520'];
+    
+    for (let i = 0; i < 50; i++) {
+      const particle = document.createElement('div');
+      particle.classList.add('particle');
+      
+      // Randomize properties
+      const startX = Math.random() * window.innerWidth;
+      const duration = Math.random() * 2 + 1.5; // 1.5s to 3.5s
+      const delay = Math.random() * 0.5;
+      const color = colors[Math.floor(Math.random() * colors.length)];
+      const size = Math.random() * 8 + 4; // 4px to 12px
+
+      particle.style.left = startX + 'px';
+      particle.style.top = '-20px';
+      particle.style.background = color;
+      particle.style.width = size + 'px';
+      particle.style.height = size + 'px';
+      
+      // If we want square confetti instead of circles randomly
+      if (Math.random() > 0.5) {
+        particle.style.borderRadius = '0';
+      }
+
+      particle.style.animationDuration = duration + 's';
+      particle.style.animationDelay = delay + 's';
+      
+      container.appendChild(particle);
+      
+      // Remove after animation
+      setTimeout(() => {
+        particle.remove();
+      }, (duration + delay) * 1000);
+    }
+  });
+</script>
+</body>
+</html>
